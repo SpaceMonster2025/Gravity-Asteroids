@@ -34,7 +34,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   // Entities
   const asteroidsRef = useRef<Asteroid[]>([]);
   const particlesRef = useRef<Particle[]>([]);
-  // stationsRef passed as prop
   
   // Visual Effects
   const screenShakeRef = useRef<number>(0);
@@ -42,8 +41,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const blackHolePos = useRef<Vector2>({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
 
-  // Camera Position (Centers on player)
+  // Camera & View
   const cameraRef = useRef<Vector2>({ x: 0, y: 0 });
+  const zoomRef = useRef<number>(1.0); // 1.0 = 100%
+  const cameraOffsetRef = useRef<Vector2>({ x: 0, y: 0 }); // Drag offset
+  const isDraggingRef = useRef<boolean>(false);
+  const lastMousePosRef = useRef<Vector2>({ x: 0, y: 0 });
 
   // Audio State Tracking
   const isThrustingRef = useRef<boolean>(false);
@@ -62,6 +65,61 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Mouse / Zoom Input Handlers
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        const zoomSensitivity = 0.001;
+        const delta = -e.deltaY * zoomSensitivity;
+        // Clamp zoom between 0.2x and 3.0x
+        zoomRef.current = Math.max(0.2, Math.min(3.0, zoomRef.current + delta * zoomRef.current * 2));
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+        if (e.button === 2) { // Right click
+            isDraggingRef.current = true;
+            lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+            canvas.style.cursor = 'grabbing';
+        }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (isDraggingRef.current) {
+            const dx = e.clientX - lastMousePosRef.current.x;
+            const dy = e.clientY - lastMousePosRef.current.y;
+            
+            // Move camera opposite to mouse drag (dragging playfield)
+            // Divide by zoom to keep movement consistent with screen pixels
+            cameraOffsetRef.current.x -= dx / zoomRef.current;
+            cameraOffsetRef.current.y -= dy / zoomRef.current;
+
+            lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+        }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+        if (e.button === 2) {
+            isDraggingRef.current = false;
+            canvas.style.cursor = 'default';
+        }
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+        canvas.removeEventListener('wheel', handleWheel);
+        window.removeEventListener('mousedown', handleMouseDown);
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+    };
   }, []);
 
   // Apply Upgrades
@@ -115,14 +173,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     asteroidsRef.current = newAsteroids;
     particlesRef.current = [];
     
-    // NOTE: Stations are initialized in App.tsx now
-
     // Reset Player to safe spot near a station or random safe spot
     playerState.current.pos = { x: 2000, y: 2000 };
     playerState.current.vel = { x: 0, y: 0 }; 
     playerState.current.fuel = playerState.current.maxFuel;
     playerState.current.integrity = playerState.current.maxIntegrity;
     
+    // Reset Camera
+    cameraOffsetRef.current = { x: 0, y: 0 };
+    zoomRef.current = 1.0;
+
     setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 10 })); 
   }, [stats.level, setStats, playerState]);
 
@@ -133,7 +193,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, [gameState, initLevel]);
 
-  // Input
+  // Input Keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current[e.code] = true; };
     const handleKeyUp = (e: KeyboardEvent) => { keysPressed.current[e.code] = false; };
@@ -211,8 +271,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     if (player.pos.y < 0) { player.pos.y = 0; player.vel.y *= -0.5; }
     if (player.pos.y > WORLD_HEIGHT) { player.pos.y = WORLD_HEIGHT; player.vel.y *= -0.5; }
 
-    cameraRef.current.x = player.pos.x - dimensions.width / 2;
-    cameraRef.current.y = player.pos.y - dimensions.height / 2;
+    // --- Update Camera ---
+    // Calculate view size in world units
+    const viewW = dimensions.width / zoomRef.current;
+    const viewH = dimensions.height / zoomRef.current;
+    // Center on player + offset
+    cameraRef.current.x = player.pos.x - viewW / 2 + cameraOffsetRef.current.x;
+    cameraRef.current.y = player.pos.y - viewH / 2 + cameraOffsetRef.current.y;
 
     if (screenShakeRef.current > 0) {
         screenShakeRef.current *= 0.9;
@@ -365,11 +430,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const width = canvas.width;
     const height = canvas.height;
     const cam = cameraRef.current;
+    const zoom = zoomRef.current;
 
+    // Clear Screen
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, width, height);
 
+    // ==========================================
+    // PASS 1: WORLD SPACE (Scaled & Translated)
+    // ==========================================
     ctx.save();
+    
+    // Apply Transform: Scale then Translate
+    // Center scale adjustment isn't needed if cam is calculated as top-left of viewport
+    ctx.scale(zoom, zoom);
     
     let shakeX = 0, shakeY = 0;
     if (screenShakeRef.current > 0) {
@@ -383,10 +457,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.lineWidth = 1;
     ctx.beginPath();
     
+    // Calculate visible range in World Coordinates
     const startX = Math.floor(cam.x / GRID_SIZE) * GRID_SIZE;
     const startY = Math.floor(cam.y / GRID_SIZE) * GRID_SIZE;
-    const endX = startX + width + GRID_SIZE;
-    const endY = startY + height + GRID_SIZE;
+    const endX = startX + (width / zoom) + GRID_SIZE;
+    const endY = startY + (height / zoom) + GRID_SIZE;
 
     for (let x = startX; x <= endX; x += GRID_SIZE) {
         if (x >= 0 && x <= WORLD_WIDTH) {
@@ -426,8 +501,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 3. Stations
     stationsRef.current.forEach(s => {
-       if (s.pos.x < cam.x - 250 || s.pos.x > cam.x + width + 250 || 
-           s.pos.y < cam.y - 250 || s.pos.y > cam.y + height + 250) return;
+       // Visibility cull
+       if (s.pos.x < cam.x - 250 || s.pos.x > cam.x + (width/zoom) + 250 || 
+           s.pos.y < cam.y - 250 || s.pos.y > cam.y + (height/zoom) + 250) return;
 
        const isHighDemand = s.inventory / s.maxInventory < HIGH_DEMAND_THRESHOLD;
 
@@ -509,6 +585,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
        ctx.restore();
        
+       // Draw Names in World Space but scales with zoom so text gets bigger/smaller
        ctx.fillStyle = '#fff';
        ctx.font = '16px Rajdhani';
        ctx.textAlign = 'center';
@@ -523,8 +600,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 4. Asteroids
     asteroidsRef.current.forEach(ast => {
-      if (ast.pos.x < cam.x - 100 || ast.pos.x > cam.x + width + 100 || 
-          ast.pos.y < cam.y - 100 || ast.pos.y > cam.y + height + 100) return;
+      // Visibility Cull
+      if (ast.pos.x < cam.x - 100 || ast.pos.x > cam.x + (width/zoom) + 100 || 
+          ast.pos.y < cam.y - 100 || ast.pos.y > cam.y + (height/zoom) + 100) return;
 
       const distBH = getDistance(ast.pos, bh);
       
@@ -564,8 +642,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 5. Particles
     particlesRef.current.forEach(p => {
-       if (p.pos.x < cam.x - 50 || p.pos.x > cam.x + width + 50 || 
-           p.pos.y < cam.y - 50 || p.pos.y > cam.y + height + 50) return;
+       if (p.pos.x < cam.x - 50 || p.pos.x > cam.x + (width/zoom) + 50 || 
+           p.pos.y < cam.y - 50 || p.pos.y > cam.y + (height/zoom) + 50) return;
        ctx.fillStyle = p.color;
        ctx.globalAlpha = p.life / p.maxLife;
        ctx.beginPath();
@@ -592,6 +670,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.stroke();
     ctx.shadowBlur = 0;
     
+    // Engine Glow
     if (keysPressed.current['KeyW'] || keysPressed.current['ArrowUp']) {
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
@@ -601,6 +680,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.lineTo(-20, -5);
       ctx.fill();
     }
+    // Retro Rockets
     if (keysPressed.current['KeyS'] || keysPressed.current['ArrowDown']) {
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
@@ -624,22 +704,35 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.restore();
     }
 
-    ctx.restore(); 
+    ctx.restore(); // END WORLD SPACE
 
+    // ==========================================
+    // PASS 2: SCREEN SPACE (UI Elements)
+    // ==========================================
+    // No transform here, 0,0 is top left of screen
+    
     // 7. Indicators
+    // We check if the SCREEN position of target is off-screen
     const drawIndicator = (targetPos: Vector2, color: string, label: string) => {
-      if (targetPos.x > cam.x + 50 && targetPos.x < cam.x + width - 50 &&
-          targetPos.y > cam.y + 50 && targetPos.y < cam.y + height - 50) {
-        return;
+      // Convert World Pos to Screen Pos
+      // ScreenX = (WorldX - CamX) * Zoom
+      const screenX = (targetPos.x - cam.x) * zoom;
+      const screenY = (targetPos.y - cam.y) * zoom;
+
+      const padding = 50;
+
+      // Check bounds
+      if (screenX > padding && screenX < width - padding &&
+          screenY > padding && screenY < height - padding) {
+        return; // On screen
       }
 
+      // Calculate direction from center of screen to target screen pos
       const cx = width / 2;
       const cy = height / 2;
-      const dx = targetPos.x - (cam.x + cx);
-      const dy = targetPos.y - (cam.y + cy);
+      const dx = screenX - cx;
+      const dy = screenY - cy;
       const angle = Math.atan2(dy, dx);
-      
-      const padding = 40;
       
       const absCos = Math.abs(Math.cos(angle));
       const absSin = Math.abs(Math.sin(angle));
@@ -669,7 +762,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       
       const textX = ix - Math.cos(angle) * 25;
       const textY = iy - Math.sin(angle) * 25;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      const dist = getDistance(targetPos, p.pos); // Distance in World Units
       ctx.fillText(label, textX, textY - 6);
       ctx.fillText(`${(dist/1000).toFixed(1)}km`, textX, textY + 6);
     };
@@ -684,6 +777,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.textAlign = 'center';
         ctx.fillText(dockPrompt, width/2, height - 150);
     }
+    
+    // Zoom Indicator
+    ctx.font = '14px Orbitron';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`ZOOM: ${(zoom * 100).toFixed(0)}%`, 20, height - 20);
 
     const mapSize = 200;
     const mapScale = mapSize / WORLD_WIDTH;
@@ -696,14 +795,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.fillRect(mapX, mapY, mapSize, mapSize);
     ctx.strokeRect(mapX, mapY, mapSize, mapSize);
 
+    // Minimap Player
     ctx.fillStyle = '#06b6d4';
     ctx.beginPath();
     ctx.arc(mapX + p.pos.x * mapScale, mapY + p.pos.y * mapScale, 3, 0, Math.PI*2);
     ctx.fill();
+    // Minimap BH
     ctx.fillStyle = '#f59e0b';
     ctx.beginPath();
     ctx.arc(mapX + bh.x * mapScale, mapY + bh.y * mapScale, 5, 0, Math.PI*2);
     ctx.fill();
+    // Minimap Stations
     stationsRef.current.forEach(s => {
         // Blink on minimap if high demand
         if (s.inventory / s.maxInventory < HIGH_DEMAND_THRESHOLD && Math.floor(Date.now() / 200) % 2 === 0) {
@@ -713,6 +815,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         }
         ctx.fillRect(mapX + s.pos.x * mapScale - 2, mapY + s.pos.y * mapScale - 2, 4, 4);
     });
+
+    // Minimap Camera Viewport Rect
+    // Visible world area: width/zoom, height/zoom
+    const visibleWorldW = width / zoom;
+    const visibleWorldH = height / zoom;
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+        mapX + cam.x * mapScale,
+        mapY + cam.y * mapScale,
+        visibleWorldW * mapScale,
+        visibleWorldH * mapScale
+    );
 
   }, [dockPrompt, dimensions, playerState, stationsRef]);
 
@@ -736,6 +851,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       width={dimensions.width} 
       height={dimensions.height}
       className="block absolute top-0 left-0 z-0"
+      onContextMenu={(e) => e.preventDefault()}
     />
   );
 };
