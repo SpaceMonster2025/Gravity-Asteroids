@@ -1,19 +1,26 @@
-import { Upgrade } from './types';
+import { Upgrade, Station } from './types';
+
+// World Constants
+export const WORLD_WIDTH = 10000;
+export const WORLD_HEIGHT = 10000;
+export const GRID_SIZE = 2000; // Much larger grid (sparser lines)
 
 // Physics Constants
 export const FRICTION = 0.98;
-export const SHIP_ACCEL = 0.1; // Reduced from 0.3 for heavier feel
-export const SHIP_MAX_SPEED = 4; // Reduced from 8 to make upgrades meaningful
-export const ROTATION_SPEED = 0.08; // Slightly slower turning
+export const SHIP_ACCEL = 0.1;
+export const SHIP_MAX_SPEED = 4;
+export const ROTATION_SPEED = 0.08;
 export const GRAVITY_CONSTANT = 0.5;
 export const BLACK_HOLE_GRAVITY = 0.8;
-export const BLACK_HOLE_RADIUS = 60;
-export const EVENT_HORIZON = 25;
+export const BLACK_HOLE_RADIUS = 150; // Larger for bigger map
+export const EVENT_HORIZON = 50;
 
 // Gameplay Constants
 export const PARTICLES_PER_ASTEROID_BASE = 5;
-export const FUEL_CONSUMPTION = 0.1;
-export const FUEL_REGEN = 0.05;
+export const FUEL_CONSUMPTION = 0.05;
+export const PARTICLE_BASE_PRICE = 10;
+export const FUEL_COST = 1; // Per unit
+export const REPAIR_COST = 5; // Per unit
 
 // Colors
 export const COLORS = {
@@ -26,7 +33,33 @@ export const COLORS = {
   PARTICLE: '#a5f3fc', // Cyan 200
   TEXT_HOLO: '#22d3ee',
   WARNING: '#ef4444',
+  STATION: '#10b981', // Emerald 500
+  STATION_GLOW: '#34d399',
 };
+
+export const STATIONS: Omit<Station, 'id' | 'vel' | 'angle' | 'mass'>[] = [
+  {
+    name: 'Alpha Outpost',
+    pos: { x: 1500, y: 1500 },
+    radius: 100,
+    color: '#10b981',
+    priceMultiplier: 1.0, // Safer, lower price
+  },
+  {
+    name: 'Beta Refinery',
+    pos: { x: 8500, y: 2000 },
+    radius: 100,
+    color: '#3b82f6', // Blue
+    priceMultiplier: 1.2,
+  },
+  {
+    name: 'Void Bazaar',
+    pos: { x: 5000, y: 8500 }, // Deep space
+    radius: 120,
+    color: '#8b5cf6', // Violet
+    priceMultiplier: 1.5, // High risk/reward
+  }
+];
 
 export const INITIAL_UPGRADES: Upgrade[] = [
   {
@@ -58,6 +91,14 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     name: 'Graviton Lens',
     description: 'Expands the effective radius of your singularity.',
     cost: 120,
+    level: 1,
+    maxLevel: 5
+  },
+  {
+    id: 'cargo',
+    name: 'Compression Hold',
+    description: 'Increases maximum particle storage capacity.',
+    cost: 200,
     level: 1,
     maxLevel: 5
   }

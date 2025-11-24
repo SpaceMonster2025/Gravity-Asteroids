@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { 
-  Vector2, Entity, Player, Asteroid, Particle, GameStats, GameState, Upgrade 
+  Vector2, Player, Asteroid, Particle, GameStats, GameState, Upgrade, Station 
 } from '../types';
 import { 
   FRICTION, SHIP_ACCEL, ROTATION_SPEED, 
   GRAVITY_CONSTANT, BLACK_HOLE_GRAVITY, BLACK_HOLE_RADIUS, EVENT_HORIZON,
-  PARTICLES_PER_ASTEROID_BASE, COLORS
+  PARTICLES_PER_ASTEROID_BASE, COLORS, WORLD_WIDTH, WORLD_HEIGHT, GRID_SIZE, STATIONS
 } from '../constants';
 
 interface GameCanvasProps {
@@ -14,39 +14,30 @@ interface GameCanvasProps {
   stats: GameStats;
   setStats: React.Dispatch<React.SetStateAction<GameStats>>;
   upgrades: Upgrade[];
+  playerState: React.MutableRefObject<Player>; // Shared ref
   onGameEvent: (type: 'start' | 'success' | 'fail') => void;
+  onDock: (station: Station) => void;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({ 
-  gameState, setGameState, stats, setStats, upgrades, onGameEvent 
+  gameState, setGameState, stats, setStats, upgrades, playerState, onGameEvent, onDock 
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number | null>(null);
   
-  // Track screen dimensions for full screen support
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [dockPrompt, setDockPrompt] = useState<string | null>(null);
 
-  // Game State Refs (Mutable for loop performance)
-  const playerRef = useRef<Player>({
-    id: 'player',
-    pos: { x: window.innerWidth / 2, y: window.innerHeight / 4 },
-    vel: { x: 0, y: 0 },
-    angle: 0,
-    radius: 15,
-    mass: 20,
-    fuel: 100,
-    maxFuel: 100,
-    integrity: 100,
-    maxIntegrity: 100,
-    singularityActive: false,
-    singularityRadius: 200,
-    singularityStrength: 1
-  });
-
+  // Entities
   const asteroidsRef = useRef<Asteroid[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const stationsRef = useRef<Station[]>([]);
+  
   const keysPressed = useRef<{ [key: string]: boolean }>({});
-  const blackHolePos = useRef<Vector2>({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const blackHolePos = useRef<Vector2>({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
+
+  // Camera Position (Centers on player)
+  const cameraRef = useRef<Vector2>({ x: 0, y: 0 });
 
   // Handle Resize
   useEffect(() => {
@@ -54,69 +45,58 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       const width = window.innerWidth;
       const height = window.innerHeight;
       setDimensions({ width, height });
-      
-      // Update canvas resolution immediately to avoid stretching
       if (canvasRef.current) {
         canvasRef.current.width = width;
         canvasRef.current.height = height;
       }
-
-      // Recenter Black Hole
-      blackHolePos.current = { x: width / 2, y: height / 2 };
     };
-
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Apply Upgrades to Player Refs
+  // Apply Upgrades
   useEffect(() => {
     const strengthUpgrade = upgrades.find(u => u.id === 'singularity_strength');
     const rangeUpgrade = upgrades.find(u => u.id === 'range');
     const hullUpgrade = upgrades.find(u => u.id === 'hull');
+    const cargoUpgrade = upgrades.find(u => u.id === 'cargo');
 
-    if (playerRef.current) {
-      playerRef.current.singularityStrength = 1 + ((strengthUpgrade?.level || 1) - 1) * 0.5;
-      playerRef.current.singularityRadius = 200 + ((rangeUpgrade?.level || 1) - 1) * 50;
-      playerRef.current.maxIntegrity = 100 + ((hullUpgrade?.level || 1) - 1) * 25;
+    if (playerState.current) {
+      playerState.current.singularityStrength = 1 + ((strengthUpgrade?.level || 1) - 1) * 0.5;
+      playerState.current.singularityRadius = 200 + ((rangeUpgrade?.level || 1) - 1) * 50;
+      playerState.current.maxIntegrity = 100 + ((hullUpgrade?.level || 1) - 1) * 25;
+      playerState.current.maxCargo = 50 + ((cargoUpgrade?.level || 1) - 1) * 50;
     }
-  }, [upgrades]);
+  }, [upgrades, playerState]);
 
-  // Level Initialization
+  // Init World
   const initLevel = useCallback(() => {
-    if (!canvasRef.current) return;
-    
-    // Spawn Asteroids based on level
-    const count = 5 + stats.level * 2;
+    // Spawn Asteroids - MUCH MORE for the huge world
+    const count = 300 + stats.level * 20; // 300 base
     const newAsteroids: Asteroid[] = [];
-    const width = window.innerWidth;
-    const height = window.innerHeight;
     
     for (let i = 0; i < count; i++) {
-      // Spawn away from black hole
       let pos: Vector2;
       let dist = 0;
       do {
-         pos = { x: Math.random() * width, y: Math.random() * height };
+         pos = { x: Math.random() * WORLD_WIDTH, y: Math.random() * WORLD_HEIGHT };
          const dx = pos.x - blackHolePos.current.x;
          const dy = pos.y - blackHolePos.current.y;
          dist = Math.sqrt(dx * dx + dy * dy);
-      } while (dist < 300); // Safe spawn distance
+      } while (dist < 800); // Further spawn from BH
 
-      // Generate random polygon shape
+      // Generate shape
       const shape: number[] = [];
       const vertices = 5 + Math.floor(Math.random() * 4);
-      for(let v=0; v<vertices; v++) {
-          shape.push(0.8 + Math.random() * 0.4); // Scale factor for radius
-      }
+      for(let v=0; v<vertices; v++) shape.push(0.8 + Math.random() * 0.4);
 
       newAsteroids.push({
         id: `ast_${i}`,
         pos,
         vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
         angle: Math.random() * Math.PI * 2,
-        radius: 15 + Math.random() * 25,
-        mass: 10 + Math.random() * 20,
+        radius: 20 + Math.random() * 40, // Varied sizes
+        mass: 10 + Math.random() * 30,
         value: 10,
         color: '#fb923c',
         shape
@@ -126,11 +106,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     asteroidsRef.current = newAsteroids;
     particlesRef.current = [];
     
-    // Reset Player Fuel/Health slightly?
-    playerRef.current.fuel = playerRef.current.maxFuel;
+    // Init Stations
+    stationsRef.current = STATIONS.map((s, i) => ({
+      ...s,
+      id: `station_${i}`,
+      vel: { x: 0, y: 0 },
+      angle: 0,
+      mass: 10000, // Immovable
+    }));
+
+    // Reset Player to safe spot near a station or random safe spot
+    playerState.current.pos = { x: 2000, y: 2000 };
+    playerState.current.fuel = playerState.current.maxFuel;
+    playerState.current.integrity = playerState.current.maxIntegrity;
     
-    setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * PARTICLES_PER_ASTEROID_BASE }));
-  }, [stats.level, setStats]);
+    // Quota is based on MASS delivered to black hole, not particles collected
+    setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 10 })); 
+  }, [stats.level, setStats, playerState]);
 
   // Initial Setup
   useEffect(() => {
@@ -139,9 +131,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, [gameState, initLevel]);
 
-  // Input Handling
+  // Input
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current[e.code] = true; };
+    const handleKeyDown = (e: KeyboardEvent) => { 
+      keysPressed.current[e.code] = true; 
+      // Docking interaction handled in loop
+    };
     const handleKeyUp = (e: KeyboardEvent) => { keysPressed.current[e.code] = false; };
     
     window.addEventListener('keydown', handleKeyDown);
@@ -152,7 +147,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, []);
 
-  // Physics Helpers
   const getDistance = (v1: Vector2, v2: Vector2) => {
     const dx = v1.x - v2.x;
     const dy = v1.y - v2.y;
@@ -164,113 +158,125 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     return mag === 0 ? { x: 0, y: 0 } : { x: v.x / mag, y: v.y / mag };
   };
 
-  // Main Game Loop
+  // Update Loop
   const update = useCallback(() => {
     if (gameState !== GameState.PLAYING) return;
 
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const player = playerRef.current;
+    const player = playerState.current;
     
-    // --- Player Movement ---
+    // 1. Player Controls
     if (keysPressed.current['KeyA'] || keysPressed.current['ArrowLeft']) player.angle -= ROTATION_SPEED;
     if (keysPressed.current['KeyD'] || keysPressed.current['ArrowRight']) player.angle += ROTATION_SPEED;
 
     const thrustUpgrade = upgrades.find(u => u.id === 'thrusters')?.level || 1;
     const accel = SHIP_ACCEL * (1 + (thrustUpgrade * 0.2)); 
-    // Reduced base speed means upgrades need slightly higher multiplier to feel punchy
 
     if (keysPressed.current['KeyW'] || keysPressed.current['ArrowUp']) {
       player.vel.x += Math.cos(player.angle) * accel;
       player.vel.y += Math.sin(player.angle) * accel;
     }
 
-    // Singularity Activation
     player.singularityActive = !!keysPressed.current['Space'];
 
-    // Apply Friction
+    // Friction
     player.vel.x *= FRICTION;
     player.vel.y *= FRICTION;
     player.pos.x += player.vel.x;
     player.pos.y += player.vel.y;
 
-    // Boundary Wrap using current window dimensions
-    if (player.pos.x < 0) player.pos.x = width;
-    if (player.pos.x > width) player.pos.x = 0;
-    if (player.pos.y < 0) player.pos.y = height;
-    if (player.pos.y > height) player.pos.y = 0;
+    // World Bounds (Bounce)
+    if (player.pos.x < 0) { player.pos.x = 0; player.vel.x *= -0.5; }
+    if (player.pos.x > WORLD_WIDTH) { player.pos.x = WORLD_WIDTH; player.vel.x *= -0.5; }
+    if (player.pos.y < 0) { player.pos.y = 0; player.vel.y *= -0.5; }
+    if (player.pos.y > WORLD_HEIGHT) { player.pos.y = WORLD_HEIGHT; player.vel.y *= -0.5; }
 
-    // --- Physics Entities ---
+    // Camera Follow
+    cameraRef.current.x = player.pos.x - dimensions.width / 2;
+    cameraRef.current.y = player.pos.y - dimensions.height / 2;
+
+    // 2. Physics Entities
     const bh = blackHolePos.current;
 
-    // Asteroids
+    // --- Station Docking Logic ---
+    let nearbyStation = null;
+    for(const station of stationsRef.current) {
+        if (getDistance(player.pos, station.pos) < station.radius + 100) {
+            nearbyStation = station;
+            if (keysPressed.current['KeyF']) {
+                onDock(station);
+                keysPressed.current['KeyF'] = false; // Prevent spam
+            }
+        }
+    }
+    setDockPrompt(nearbyStation ? `PRESS 'F' TO DOCK AT ${nearbyStation.name}` : null);
+
+    // --- Asteroids ---
+    // Optimization: Only process asteroids relatively close to player OR close to BH
+    // But for "herding" mechanics, we need global physics for anything moving.
+    // For 300 items, global loop is fine.
+    
     for (let i = asteroidsRef.current.length - 1; i >= 0; i--) {
       const ast = asteroidsRef.current[i];
       
-      // 1. Gravity from Black Hole
+      // BH Gravity
       const distBH = getDistance(ast.pos, bh);
       if (distBH < EVENT_HORIZON) {
-        // Destroy Asteroid & Spawn Particles
+        // Destroy & Spawn Particles
         for(let p=0; p < PARTICLES_PER_ASTEROID_BASE; p++) {
           particlesRef.current.push({
             id: `p_${Date.now()}_${p}`,
             pos: { ...ast.pos },
-            vel: { 
-              x: (Math.random() - 0.5) * 5, 
-              y: (Math.random() - 0.5) * 5 
-            },
-            radius: 3,
+            vel: { x: (Math.random()-0.5)*8, y: (Math.random()-0.5)*8 },
+            radius: 4,
             angle: 0,
             mass: 1,
-            life: 150 + Math.random() * 50,
-            maxLife: 200,
+            life: 600, // Longer life for foraging
+            maxLife: 600,
             color: COLORS.PARTICLE
           });
         }
+        
+        // Add to Score (Mass delivered)
+        setStats(prev => ({ ...prev, score: prev.score + Math.floor(ast.mass * 10) }));
         asteroidsRef.current.splice(i, 1);
         continue;
       }
 
-      // Pull into BH
+      // Pull to BH
       const dirBH = normalize({ x: bh.x - ast.pos.x, y: bh.y - ast.pos.y });
-      const forceBH = BLACK_HOLE_GRAVITY * (1000 / (distBH * distBH + 1)); // Clamped gravity
+      const forceBH = BLACK_HOLE_GRAVITY * (2000 / (distBH * distBH + 1)); 
       ast.vel.x += dirBH.x * forceBH;
       ast.vel.y += dirBH.y * forceBH;
 
-      // 2. Singularity Pull (Player)
+      // Player Singularity
       if (player.singularityActive) {
         const distPlayer = getDistance(ast.pos, player.pos);
         if (distPlayer < player.singularityRadius) {
           const dirPlayer = normalize({ x: player.pos.x - ast.pos.x, y: player.pos.y - ast.pos.y });
           const forcePlayer = (GRAVITY_CONSTANT * player.singularityStrength * player.mass * ast.mass) / (distPlayer * distPlayer + 100);
-          
-          // Pull Asteroid
           ast.vel.x += dirPlayer.x * forcePlayer;
           ast.vel.y += dirPlayer.y * forcePlayer;
-
-          // Drag on Ship (Newton's 3rd Lawish - reduced for gameplay fun)
-          player.vel.x -= dirPlayer.x * (forcePlayer / player.mass) * 0.5;
-          player.vel.y -= dirPlayer.y * (forcePlayer / player.mass) * 0.5;
+          
+          // Drag
+          player.vel.x -= dirPlayer.x * (forcePlayer / player.mass) * 0.2;
+          player.vel.y -= dirPlayer.y * (forcePlayer / player.mass) * 0.2;
         }
       }
 
-      // Move Asteroid
-      ast.vel.x *= 0.99; // Space drag
-      ast.vel.y *= 0.99;
+      ast.vel.x *= 0.995;
+      ast.vel.y *= 0.995;
       ast.pos.x += ast.vel.x;
       ast.pos.y += ast.vel.y;
 
-      // Player Collision (Damage)
+      // Collision with Player
       const distCol = getDistance(ast.pos, player.pos);
       if (distCol < ast.radius + player.radius) {
-        // Bounce
         const angle = Math.atan2(player.pos.y - ast.pos.y, player.pos.x - ast.pos.x);
-        player.vel.x += Math.cos(angle) * 2;
-        player.vel.y += Math.sin(angle) * 2;
-        ast.vel.x -= Math.cos(angle) * 1;
-        ast.vel.y -= Math.sin(angle) * 1;
-        
-        player.integrity -= (ast.mass * 0.5);
+        player.vel.x += Math.cos(angle) * 3;
+        player.vel.y += Math.sin(angle) * 3;
+        ast.vel.x -= Math.cos(angle) * 2;
+        ast.vel.y -= Math.sin(angle) * 2;
+        player.integrity -= (ast.mass * 0.1);
         if (player.integrity <= 0) {
             setGameState(GameState.GAME_OVER);
             onGameEvent('fail');
@@ -278,17 +284,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     }
 
-    // Particles
-    let particlesCollected = 0;
+    // --- Particles ---
+    let addedCargo = 0;
     for (let i = particlesRef.current.length - 1; i >= 0; i--) {
       const p = particlesRef.current[i];
-
-      // Anti-Gravity: Exotic particles are repelled by the Black Hole
       const distBH = getDistance(p.pos, bh);
-      if (distBH < 400) {
+      
+      // Anti-Gravity: Push away from BH
+      if (distBH < 800) {
           const dir = normalize({ x: p.pos.x - bh.x, y: p.pos.y - bh.y });
-          // Repulsion force ensures they drift out of the danger zone
-          const repulsion = 0.4; 
+          const repulsion = 0.5 * (1 - distBH/800); 
           p.vel.x += dir.x * repulsion;
           p.vel.y += dir.y * repulsion;
       }
@@ -296,44 +301,33 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       p.life--;
       p.pos.x += p.vel.x;
       p.pos.y += p.vel.y;
-      p.vel.x *= 0.95;
-      p.vel.y *= 0.95;
+      p.vel.x *= 0.98;
+      p.vel.y *= 0.98;
 
-      // Collection
-      if (getDistance(p.pos, player.pos) < player.radius + 20) {
-        particlesRef.current.splice(i, 1);
-        particlesCollected++;
+      // Collection (Only if cargo space available)
+      if (getDistance(p.pos, player.pos) < player.radius + 30) {
+        if (player.cargo < player.maxCargo) {
+            particlesRef.current.splice(i, 1);
+            player.cargo += 1;
+            addedCargo++;
+        }
       } else if (p.life <= 0) {
         particlesRef.current.splice(i, 1);
       }
     }
 
-    if (particlesCollected > 0) {
-      setStats(prev => {
-         const newCollected = prev.collected + particlesCollected;
-         const newScore = prev.score + (particlesCollected * 10);
-         
-         // Level Complete Check
-         if (newCollected >= prev.particlesNeeded && asteroidsRef.current.length === 0) {
-             // Delay slightly to prevent instant transition or handle via effect
-             setTimeout(() => {
-               setGameState(GameState.LEVEL_COMPLETE);
-               onGameEvent('success');
-             }, 100);
-         }
-         return { ...prev, collected: newCollected, score: newScore };
-      });
+    if (addedCargo > 0) {
+      setStats(prev => ({ ...prev, collected: prev.collected + addedCargo }));
     }
 
-    // Black Hole Threat to Player
-    const distPlayerBH = getDistance(player.pos, bh);
-    if (distPlayerBH < EVENT_HORIZON) {
+    // BH Player Death
+    if (getDistance(player.pos, bh) < EVENT_HORIZON) {
         player.integrity = 0;
         setGameState(GameState.GAME_OVER);
         onGameEvent('fail');
     }
 
-  }, [gameState, upgrades, setGameState, setStats, onGameEvent]);
+  }, [gameState, upgrades, setGameState, setStats, onGameEvent, onDock, dimensions, playerState]);
 
   // Rendering
   const draw = useCallback(() => {
@@ -342,18 +336,51 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Use stored dimensions or current canvas dimensions
     const width = canvas.width;
     const height = canvas.height;
+    const cam = cameraRef.current;
 
-    // Clear
+    // Clear Screen
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw Black Hole
-    const bh = blackHolePos.current;
+    ctx.save();
+    // Apply Camera Transform
+    ctx.translate(-cam.x, -cam.y);
+
+    // 1. Draw Grid (World Background)
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
     
-    // Accretion Disk
+    // Optimize grid drawing to only visible area
+    const startX = Math.floor(cam.x / GRID_SIZE) * GRID_SIZE;
+    const startY = Math.floor(cam.y / GRID_SIZE) * GRID_SIZE;
+    const endX = startX + width + GRID_SIZE;
+    const endY = startY + height + GRID_SIZE;
+
+    for (let x = startX; x <= endX; x += GRID_SIZE) {
+        if (x >= 0 && x <= WORLD_WIDTH) {
+            ctx.moveTo(x, startY < 0 ? 0 : startY);
+            ctx.lineTo(x, endY > WORLD_HEIGHT ? WORLD_HEIGHT : endY);
+        }
+    }
+    for (let y = startY; y <= endY; y += GRID_SIZE) {
+        if (y >= 0 && y <= WORLD_HEIGHT) {
+            ctx.moveTo(startX < 0 ? 0 : startX, y);
+            ctx.lineTo(endX > WORLD_WIDTH ? WORLD_WIDTH : endX, y);
+        }
+    }
+    ctx.stroke();
+
+    // World Borders
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+    // 2. Draw Black Hole
+    const bh = blackHolePos.current;
+    // Disk
     const grd = ctx.createRadialGradient(bh.x, bh.y, EVENT_HORIZON, bh.x, bh.y, BLACK_HOLE_RADIUS * 1.5);
     grd.addColorStop(0, COLORS.BLACK_HOLE_CORE);
     grd.addColorStop(0.4, COLORS.BLACK_HOLE_DISK);
@@ -362,7 +389,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.beginPath();
     ctx.arc(bh.x, bh.y, BLACK_HOLE_RADIUS * 1.5, 0, Math.PI * 2);
     ctx.fill();
-
     // Event Horizon
     ctx.fillStyle = '#000';
     ctx.beginPath();
@@ -372,15 +398,45 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw Asteroids
+    // 3. Draw Stations
+    stationsRef.current.forEach(s => {
+       ctx.fillStyle = s.color;
+       ctx.shadowColor = s.color;
+       ctx.shadowBlur = 20;
+       ctx.beginPath();
+       ctx.arc(s.pos.x, s.pos.y, s.radius, 0, Math.PI * 2);
+       ctx.fill();
+       ctx.shadowBlur = 0;
+       
+       // Station Structure Details
+       ctx.strokeStyle = '#fff';
+       ctx.lineWidth = 3;
+       ctx.beginPath();
+       ctx.moveTo(s.pos.x - 40, s.pos.y);
+       ctx.lineTo(s.pos.x + 40, s.pos.y);
+       ctx.moveTo(s.pos.x, s.pos.y - 40);
+       ctx.lineTo(s.pos.x, s.pos.y + 40);
+       ctx.stroke();
+
+       // Label
+       ctx.fillStyle = '#fff';
+       ctx.font = '16px Rajdhani';
+       ctx.textAlign = 'center';
+       ctx.fillText(s.name, s.pos.x, s.pos.y + s.radius + 30);
+    });
+
+    // 4. Draw Asteroids (Culling check could be added here)
     asteroidsRef.current.forEach(ast => {
+      // Simple frustum culling
+      if (ast.pos.x < cam.x - 100 || ast.pos.x > cam.x + width + 100 || 
+          ast.pos.y < cam.y - 100 || ast.pos.y > cam.y + height + 100) return;
+
       ctx.save();
       ctx.translate(ast.pos.x, ast.pos.y);
       ctx.rotate(ast.angle);
       ctx.strokeStyle = ast.color;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      // Draw irregular polygon
       ast.shape.forEach((scale, idx) => {
         const theta = (idx / ast.shape.length) * Math.PI * 2;
         const x = Math.cos(theta) * ast.radius * scale;
@@ -393,22 +449,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.restore();
     });
 
-    // Draw Particles
+    // 5. Draw Particles
     particlesRef.current.forEach(p => {
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = p.life / p.maxLife;
-      ctx.beginPath();
-      ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+       if (p.pos.x < cam.x - 50 || p.pos.x > cam.x + width + 50 || 
+           p.pos.y < cam.y - 50 || p.pos.y > cam.y + height + 50) return;
+       ctx.fillStyle = p.color;
+       ctx.globalAlpha = p.life / p.maxLife;
+       ctx.beginPath();
+       ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI * 2);
+       ctx.fill();
+       ctx.globalAlpha = 1;
     });
 
-    // Draw Player
-    const p = playerRef.current;
+    // 6. Draw Player
+    const p = playerState.current;
     ctx.save();
     ctx.translate(p.pos.x, p.pos.y);
     ctx.rotate(p.angle);
-    
     // Ship Body
     ctx.strokeStyle = COLORS.SHIP;
     ctx.lineWidth = 2;
@@ -422,8 +479,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.closePath();
     ctx.stroke();
     ctx.shadowBlur = 0;
-
-    // Thruster Flame
+    // Thruster
     if (keysPressed.current['KeyW'] || keysPressed.current['ArrowUp']) {
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
@@ -435,7 +491,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
     ctx.restore();
 
-    // Singularity Effect
+    // Singularity Ring
     if (p.singularityActive) {
         ctx.save();
         ctx.translate(p.pos.x, p.pos.y);
@@ -445,18 +501,114 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.beginPath();
         ctx.arc(0, 0, p.singularityRadius, 0, Math.PI * 2);
         ctx.stroke();
-        
-        // Pulse
-        const pulseSize = (Date.now() % 500) / 500 * p.singularityRadius;
-        ctx.beginPath();
-        ctx.arc(0, 0, pulseSize, 0, Math.PI * 2);
-        ctx.stroke();
         ctx.restore();
     }
 
-  }, []);
+    ctx.restore(); // End Camera Transform
 
-  // Loop Driver
+    // 7. Off-screen Indicators
+    const drawIndicator = (targetPos: Vector2, color: string, label: string) => {
+      // Check if visible within camera bounds (with some margin)
+      if (targetPos.x > cam.x + 50 && targetPos.x < cam.x + width - 50 &&
+          targetPos.y > cam.y + 50 && targetPos.y < cam.y + height - 50) {
+        return;
+      }
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const dx = targetPos.x - (cam.x + cx);
+      const dy = targetPos.y - (cam.y + cy);
+      const angle = Math.atan2(dy, dx);
+      
+      const padding = 40;
+      
+      // Calculate intersection with screen edges
+      // Line equation: x = cx + t*cos(a), y = cy + t*sin(a)
+      // Screen box: [padding, width-padding], [padding, height-padding]
+      
+      const absCos = Math.abs(Math.cos(angle));
+      const absSin = Math.abs(Math.sin(angle));
+      
+      const tX = (cx - padding) / (absCos || 0.001);
+      const tY = (cy - padding) / (absSin || 0.001);
+      
+      const t = Math.min(tX, tY);
+      
+      const ix = cx + Math.cos(angle) * t;
+      const iy = cy + Math.sin(angle) * t;
+
+      // Draw Arrow
+      ctx.fillStyle = color;
+      ctx.save();
+      ctx.translate(ix, iy);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-10, 10);
+      ctx.lineTo(-10, -10);
+      ctx.fill();
+      ctx.restore();
+
+      // Draw Label & Distance
+      ctx.fillStyle = color;
+      ctx.font = '12px Rajdhani';
+      ctx.textAlign = 'center';
+      
+      // Push text slightly inward
+      const textX = ix - Math.cos(angle) * 25;
+      const textY = iy - Math.sin(angle) * 25;
+      
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      // Ensure text is readable
+      ctx.fillText(label, textX, textY - 6);
+      ctx.fillText(`${(dist/1000).toFixed(1)}km`, textX, textY + 6);
+    };
+
+    drawIndicator(bh, COLORS.BLACK_HOLE_DISK, 'SINGULARITY');
+    stationsRef.current.forEach(s => drawIndicator(s.pos, s.color, s.name));
+
+    // 8. HUD Overlays (Minimap, Prompts)
+    // Dock Prompt
+    if (dockPrompt) {
+        ctx.font = '24px Orbitron';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(dockPrompt, width/2, height - 150);
+    }
+
+    // Minimap (Bottom Right)
+    const mapSize = 200;
+    const mapScale = mapSize / WORLD_WIDTH;
+    const mapX = width - mapSize - 20; // Bottom Right
+    const mapY = height - mapSize - 20;
+    
+    // Map BG
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 2;
+    ctx.fillRect(mapX, mapY, mapSize, mapSize);
+    ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+
+    // Map Entities
+    // Player
+    ctx.fillStyle = '#06b6d4';
+    ctx.beginPath();
+    ctx.arc(mapX + p.pos.x * mapScale, mapY + p.pos.y * mapScale, 3, 0, Math.PI*2);
+    ctx.fill();
+    // BH
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(mapX + bh.x * mapScale, mapY + bh.y * mapScale, 5, 0, Math.PI*2);
+    ctx.fill();
+    // Stations
+    stationsRef.current.forEach(s => {
+        ctx.fillStyle = s.color;
+        ctx.fillRect(mapX + s.pos.x * mapScale - 2, mapY + s.pos.y * mapScale - 2, 4, 4);
+    });
+
+  }, [dockPrompt, dimensions, playerState]);
+
+  // Loop
   const loop = useCallback(() => {
     update();
     draw();

@@ -1,24 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { GameStats, Player, NarrativeLog, GameState, Upgrade } from '../types';
-import { Radar, Battery, Activity, Zap, Shield, AlertTriangle } from 'lucide-react';
+import React from 'react';
+import { GameStats, NarrativeLog, GameState, Player } from '../types';
+import { Radar, Zap, Shield, Box, CreditCard } from 'lucide-react';
 
 interface HUDProps {
   stats: GameStats;
   logs: NarrativeLog[];
   gameState: GameState;
-  upgrades: Upgrade[];
-  onUpgrade: (id: string) => void;
-  onNextLevel: () => void;
+  player: Player;
   onRestart: () => void;
   onStart: () => void;
 }
 
 const HUD: React.FC<HUDProps> = ({ 
-  stats, logs, gameState, upgrades, onUpgrade, onNextLevel, onRestart, onStart 
+  stats, logs, gameState, player, onRestart, onStart 
 }) => {
-  const [activeTab, setActiveTab] = useState<'mission' | 'systems'>('mission');
-
-  const getUpgradeCost = (u: Upgrade) => Math.floor(u.cost * Math.pow(1.5, u.level - 1));
 
   if (gameState === GameState.MENU) {
     return (
@@ -26,17 +21,9 @@ const HUD: React.FC<HUDProps> = ({
         <div className="max-w-2xl w-full border border-cyan-500 bg-black/90 p-8 text-center shadow-[0_0_50px_rgba(6,182,212,0.3)]">
           <h1 className="text-6xl font-orbitron text-cyan-400 mb-4 tracking-widest uppercase">Singularity Shepherd</h1>
           <p className="text-xl text-slate-300 mb-8 font-light">
-            Pilot the Void Harvester. Use your <span className="text-fuchsia-400">Singularity Drive (SPACE)</span> to tow asteroids into the Event Horizon. 
-            Avoid the crush depth. Collect the Exotic Matter.
+            Navigate the Deep Void. Forage for <span className="text-cyan-200">Exotic Matter</span>. 
+            Tow asteroids to the Black Hole to fulfill your quota, but keep the loot for yourself to sell at <span className="text-emerald-400">Trading Stations</span>.
           </p>
-          
-          <div className="grid grid-cols-2 gap-4 text-left mb-8 bg-slate-900/50 p-6 rounded border border-slate-700">
-             <div><strong className="text-cyan-400">WASD / Arrows</strong> : Thrust & Rotate</div>
-             <div><strong className="text-fuchsia-400">SPACE (Hold)</strong> : Activate Singularity</div>
-             <div><strong className="text-amber-400">Objective</strong> : Feed the Black Hole</div>
-             <div><strong className="text-red-400">Warning</strong> : Don't fall in.</div>
-          </div>
-
           <button 
             onClick={onStart}
             className="px-12 py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-orbitron text-2xl tracking-wider clip-path-polygon transition-all hover:scale-105"
@@ -55,30 +42,33 @@ const HUD: React.FC<HUDProps> = ({
       {/* Top Bar */}
       <div className="flex justify-between items-start">
         {/* Mission Stats */}
-        <div className="bg-black/60 border-l-4 border-cyan-500 p-4 backdrop-blur w-64">
-          <div className="flex items-center gap-2 mb-2 text-cyan-400">
+        <div className="bg-black/60 border-l-4 border-cyan-500 p-4 backdrop-blur w-72">
+          <div className="flex items-center gap-2 mb-3 text-cyan-400 border-b border-slate-700 pb-2">
             <Radar size={20} />
             <span className="font-orbitron font-bold">SECTOR {stats.level}</span>
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-slate-300">
-              <span>SCORE</span>
-              <span className="font-mono text-white">{stats.score.toLocaleString()}</span>
+          <div className="space-y-3">
+            <div>
+                <div className="flex justify-between text-xs text-amber-500 mb-1">
+                    <span>BLACK HOLE MASS</span>
+                    <span className="font-mono">{stats.score.toLocaleString()} / {stats.particlesNeeded.toLocaleString()}</span>
+                </div>
+                <div className="h-1 bg-slate-800 w-full">
+                    <div 
+                        className="h-full bg-amber-500 transition-all duration-500" 
+                        style={{ width: `${Math.min(100, (stats.score / stats.particlesNeeded) * 100)}%` }}
+                    />
+                </div>
             </div>
-            <div className="flex justify-between text-sm text-slate-300">
-              <span>PARTICLES</span>
-              <span className="font-mono text-white">{stats.collected} / {stats.particlesNeeded}</span>
-            </div>
-            <div className="h-1 bg-slate-800 w-full mt-1">
-              <div 
-                className="h-full bg-cyan-400 transition-all duration-500" 
-                style={{ width: `${Math.min(100, (stats.collected / stats.particlesNeeded) * 100)}%` }}
-              />
+            
+            <div className="flex items-center gap-2 text-emerald-400">
+                <CreditCard size={16} />
+                <span className="font-mono text-xl">{player.credits.toLocaleString()} CR</span>
             </div>
           </div>
         </div>
 
-        {/* Narrative Log (Comms) */}
+        {/* Narrative Log */}
         <div className="bg-black/60 border-r-4 border-amber-500 p-4 backdrop-blur w-96 max-h-48 overflow-hidden flex flex-col-reverse">
           {logs.slice(0, 3).map((log, i) => (
             <div key={i} className={`mb-3 ${i === 0 ? 'opacity-100' : 'opacity-60 text-sm'}`}>
@@ -94,59 +84,17 @@ const HUD: React.FC<HUDProps> = ({
         </div>
       </div>
 
-      {/* Center Messages */}
-      {(gameState === GameState.LEVEL_COMPLETE || gameState === GameState.GAME_OVER) && (
+      {/* Center Messages (Game Over Only) */}
+      {(gameState === GameState.GAME_OVER) && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-auto bg-black/70 backdrop-blur-md">
-          <div className="max-w-4xl w-full p-8 bg-slate-900 border border-slate-600 shadow-2xl">
-             <h2 className={`text-5xl font-orbitron text-center mb-2 ${gameState === GameState.LEVEL_COMPLETE ? 'text-green-400' : 'text-red-500'}`}>
-               {gameState === GameState.LEVEL_COMPLETE ? 'SECTOR CLEARED' : 'SIGNAL LOST'}
-             </h2>
-             <p className="text-center text-slate-400 mb-8 font-mono">
-               {gameState === GameState.LEVEL_COMPLETE ? 'Quota met. Docking for upgrades.' : 'Vessel integrity critical. Simulation terminated.'}
+          <div className="max-w-xl w-full p-8 bg-slate-900 border border-red-600 shadow-2xl text-center">
+             <h2 className="text-5xl font-orbitron text-red-500 mb-4">SIGNAL LOST</h2>
+             <p className="text-slate-400 mb-8 font-mono">
+               Vessel destroyed. Cargo lost. Simulation terminated.
              </p>
-
-             <div className="grid grid-cols-2 gap-6 mb-8">
-               {upgrades.map(u => {
-                 const cost = getUpgradeCost(u);
-                 const canAfford = stats.score >= cost;
-                 const isMax = u.level >= u.maxLevel;
-                 return (
-                   <div key={u.id} className="bg-black/40 p-4 border border-slate-700 flex flex-col justify-between hover:border-cyan-700 transition-colors">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                           <h4 className="text-cyan-300 font-bold">{u.name}</h4>
-                           <span className="text-xs text-slate-500">Lvl {u.level}/{u.maxLevel}</span>
-                        </div>
-                        <p className="text-xs text-slate-400 mb-4 h-8">{u.description}</p>
-                      </div>
-                      <button 
-                        disabled={!canAfford || isMax}
-                        onClick={() => onUpgrade(u.id)}
-                        className={`w-full py-2 text-sm font-bold uppercase tracking-wider flex justify-between px-4
-                          ${isMax ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 
-                            canAfford ? 'bg-cyan-900 text-cyan-100 hover:bg-cyan-700' : 'bg-red-900/30 text-red-400 opacity-50 cursor-not-allowed'
-                          }
-                        `}
-                      >
-                        <span>{isMax ? 'MAXED' : 'UPGRADE'}</span>
-                        {!isMax && <span>{cost} CR</span>}
-                      </button>
-                   </div>
-                 )
-               })}
-             </div>
-
-             <div className="flex justify-center">
-                {gameState === GameState.LEVEL_COMPLETE ? (
-                  <button onClick={onNextLevel} className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-orbitron tracking-widest text-lg">
-                    WARP TO SECTOR {stats.level + 1}
-                  </button>
-                ) : (
-                  <button onClick={onRestart} className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-orbitron tracking-widest text-lg">
-                    REBOOT SYSTEM
-                  </button>
-                )}
-             </div>
+             <button onClick={onRestart} className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-orbitron tracking-widest text-lg">
+                REBOOT SYSTEM
+             </button>
           </div>
         </div>
       )}
@@ -154,7 +102,7 @@ const HUD: React.FC<HUDProps> = ({
       {/* Bottom Bar */}
       <div className="flex justify-between items-end">
         {/* Ship Systems */}
-        <div className="bg-black/60 border-l-4 border-fuchsia-500 p-4 backdrop-blur w-72">
+        <div className="bg-black/60 border-l-4 border-fuchsia-500 p-4 backdrop-blur w-80">
            <h3 className="text-fuchsia-400 font-orbitron mb-2 text-sm flex items-center gap-2">
              <Zap size={16} /> SYSTEMS DIAGNOSTIC
            </h3>
@@ -162,24 +110,27 @@ const HUD: React.FC<HUDProps> = ({
              <div className="flex items-center gap-3">
                 <Shield size={16} className="text-cyan-500" />
                 <div className="flex-1">
-                  <div className="flex justify-between text-xs text-cyan-200 mb-1"><span>INTEGRITY</span> <span>100%</span></div>
-                  <div className="h-2 bg-slate-800"><div className="h-full bg-cyan-500 w-full"></div></div>
+                  <div className="flex justify-between text-xs text-cyan-200 mb-1"><span>INTEGRITY</span> <span>{Math.floor(player.integrity)}/{player.maxIntegrity}</span></div>
+                  <div className="h-2 bg-slate-800"><div className="h-full bg-cyan-500" style={{width: `${(player.integrity/player.maxIntegrity)*100}%`}}></div></div>
                 </div>
              </div>
+             
              <div className="flex items-center gap-3">
-                <Activity size={16} className="text-fuchsia-500" />
+                <Box size={16} className="text-emerald-400" />
                 <div className="flex-1">
-                  <div className="flex justify-between text-xs text-fuchsia-200 mb-1"><span>SINGULARITY COIL</span> <span>READY</span></div>
-                  <div className="h-2 bg-slate-800"><div className="h-full bg-fuchsia-500 w-full"></div></div>
+                  <div className="flex justify-between text-xs text-emerald-200 mb-1">
+                      <span>CARGO HOLD</span> 
+                      <span>{player.cargo}/{player.maxCargo}</span>
+                  </div>
+                  <div className="h-2 bg-slate-800">
+                      <div className="h-full bg-emerald-500" style={{width: `${(player.cargo/player.maxCargo)*100}%`}}></div>
+                  </div>
+                  {player.cargo >= player.maxCargo && (
+                      <div className="text-[10px] text-red-400 text-right mt-1 blink">CARGO FULL - DOCK TO SELL</div>
+                  )}
                 </div>
              </div>
            </div>
-        </div>
-        
-        {/* Controls Hint */}
-        <div className="text-slate-500 font-mono text-xs text-right opacity-50">
-          <div className="mb-1">VOID HARVESTER OS v9.2</div>
-          <div>CONNECTED TO MAIN FRAME</div>
         </div>
       </div>
     </div>

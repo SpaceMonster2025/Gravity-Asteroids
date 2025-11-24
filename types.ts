@@ -20,6 +20,9 @@ export interface Player extends Entity {
   singularityActive: boolean;
   singularityRadius: number;
   singularityStrength: number;
+  cargo: number;
+  maxCargo: number;
+  credits: number;
 }
 
 export interface Asteroid extends Entity {
@@ -34,16 +37,23 @@ export interface Particle extends Entity {
   color: string;
 }
 
+export interface Station extends Entity {
+  name: string;
+  color: string;
+  priceMultiplier: number; // 1.0 is base price
+}
+
 export interface GameStats {
-  score: number;
+  score: number; // Represents Mass delivered to BH
   level: number;
-  collected: number;
-  particlesNeeded: number;
+  collected: number; // Total gathered lifetime
+  particlesNeeded: number; // Quota for BH
 }
 
 export enum GameState {
   MENU,
   PLAYING,
+  DOCKED,
   LEVEL_COMPLETE,
   GAME_OVER
 }
