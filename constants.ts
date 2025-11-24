@@ -1,3 +1,4 @@
+
 import { Upgrade, Station } from './types';
 
 // World Constants
@@ -14,6 +15,8 @@ export const GRAVITY_CONSTANT = 0.5;
 export const BLACK_HOLE_GRAVITY = 0.8;
 export const BLACK_HOLE_RADIUS = 150; // Larger for bigger map
 export const EVENT_HORIZON = 50;
+export const RADIATION_RADIUS = 600; // Zone where hull takes damage
+export const RADIATION_DAMAGE_MAX = 0.2; // Max damage per frame at event horizon
 
 // Gameplay Constants
 export const PARTICLES_PER_ASTEROID_BASE = 5;
@@ -21,6 +24,8 @@ export const FUEL_CONSUMPTION = 0.05;
 export const PARTICLE_BASE_PRICE = 10;
 export const FUEL_COST = 1; // Per unit
 export const REPAIR_COST = 5; // Per unit
+export const REPULSION_START_RADIUS = 2500; // Particles push away to this dist at start
+export const REPULSION_MIN_RADIUS = 700; // Minimum repulsion distance at high mass
 
 // Economy
 export const STATION_CONSUMPTION_RATE = 0.03; // Particles consumed per frame

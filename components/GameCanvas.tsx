@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { 
   Vector2, Player, Asteroid, Particle, GameStats, GameState, Upgrade, Station 
@@ -6,7 +7,8 @@ import {
   FRICTION, SHIP_ACCEL, ROTATION_SPEED, 
   GRAVITY_CONSTANT, BLACK_HOLE_GRAVITY, BLACK_HOLE_RADIUS, EVENT_HORIZON,
   PARTICLES_PER_ASTEROID_BASE, COLORS, WORLD_WIDTH, WORLD_HEIGHT, GRID_SIZE, 
-  STATION_CONSUMPTION_RATE, HIGH_DEMAND_THRESHOLD
+  STATION_CONSUMPTION_RATE, HIGH_DEMAND_THRESHOLD,
+  RADIATION_RADIUS, RADIATION_DAMAGE_MAX, REPULSION_START_RADIUS, REPULSION_MIN_RADIUS
 } from '../constants';
 import { playThrustSound, playGravitySound, playExplosion, playCollectSound } from '../services/audioService';
 
@@ -30,6 +32,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [dockPrompt, setDockPrompt] = useState<string | null>(null);
+  const [radiationWarning, setRadiationWarning] = useState<boolean>(false);
 
   // Entities
   const asteroidsRef = useRef<Asteroid[]>([]);
@@ -182,6 +185,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     // Reset Camera
     cameraOffsetRef.current = { x: 0, y: 0 };
     zoomRef.current = 1.0;
+    setRadiationWarning(false);
 
     setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 10 })); 
   }, [stats.level, setStats, playerState]);
@@ -229,6 +233,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     const player = playerState.current;
+    const bh = blackHolePos.current;
     
     // 1. Player Controls
     if (keysPressed.current['KeyA'] || keysPressed.current['ArrowLeft']) player.angle -= ROTATION_SPEED;
@@ -271,6 +276,24 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     if (player.pos.y < 0) { player.pos.y = 0; player.vel.y *= -0.5; }
     if (player.pos.y > WORLD_HEIGHT) { player.pos.y = WORLD_HEIGHT; player.vel.y *= -0.5; }
 
+    // --- Radiation Logic ---
+    const distPlayerBH = getDistance(player.pos, bh);
+    if (distPlayerBH < RADIATION_RADIUS) {
+        const radFactor = 1 - (distPlayerBH / RADIATION_RADIUS); // 0 at edge, 1 at center
+        const damage = RADIATION_DAMAGE_MAX * radFactor;
+        player.integrity -= damage;
+        screenShakeRef.current += radFactor * 0.5;
+        setRadiationWarning(true);
+        if (player.integrity <= 0) {
+            setGameState(GameState.GAME_OVER);
+            playExplosion('large');
+            onGameEvent('fail');
+        }
+    } else {
+        setRadiationWarning(false);
+    }
+
+
     // --- Update Camera ---
     // Calculate view size in world units
     const viewW = dimensions.width / zoomRef.current;
@@ -285,7 +308,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // 2. Physics Entities
-    const bh = blackHolePos.current;
 
     // --- Station Logic ---
     let nearbyStation = null;
@@ -379,15 +401,25 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // --- Particles ---
     let addedCargo = 0;
+    
+    // Calculate Dynamic Repulsion Radius based on Mass (Score)
+    // Low Mass = High Radius (Particles push far away)
+    // High Mass = Low Radius (Particles stay closer to event horizon)
+    const currentRepulsionRadius = Math.max(
+        REPULSION_MIN_RADIUS, 
+        REPULSION_START_RADIUS - (stats.score * 0.4)
+    );
+
     for (let i = particlesRef.current.length - 1; i >= 0; i--) {
       const p = particlesRef.current[i];
       const distBH = getDistance(p.pos, bh);
       
-      if (distBH < 800) {
+      if (distBH < currentRepulsionRadius) {
           const dir = normalize({ x: p.pos.x - bh.x, y: p.pos.y - bh.y });
-          const repulsion = 0.5 * (1 - distBH/800); 
-          p.vel.x += dir.x * repulsion;
-          p.vel.y += dir.y * repulsion;
+          // Force strength inverse to distance relative to repulsion radius
+          const repulsionStrength = 1.0 * (1 - distBH / currentRepulsionRadius); 
+          p.vel.x += dir.x * repulsionStrength;
+          p.vel.y += dir.y * repulsionStrength;
       }
 
       p.life--;
@@ -482,8 +514,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.lineWidth = 5;
     ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-    // 2. Black Hole
+    // 2. Black Hole & Radiation Zone
     const bh = blackHolePos.current;
+    
+    // Radiation Zone
+    const radGrd = ctx.createRadialGradient(bh.x, bh.y, EVENT_HORIZON, bh.x, bh.y, RADIATION_RADIUS);
+    radGrd.addColorStop(0, 'rgba(239, 68, 68, 0.4)'); // Red near center
+    radGrd.addColorStop(0.5, 'rgba(239, 68, 68, 0.1)'); 
+    radGrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = radGrd;
+    ctx.beginPath();
+    ctx.arc(bh.x, bh.y, RADIATION_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
     const grd = ctx.createRadialGradient(bh.x, bh.y, EVENT_HORIZON, bh.x, bh.y, BLACK_HOLE_RADIUS * 1.5);
     grd.addColorStop(0, COLORS.BLACK_HOLE_CORE);
     grd.addColorStop(0.4, COLORS.BLACK_HOLE_DISK);
@@ -710,8 +753,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     // ==========================================
     // PASS 2: SCREEN SPACE (UI Elements)
     // ==========================================
-    // No transform here, 0,0 is top left of screen
     
+    // Radiation Warning Vignette
+    if (radiationWarning) {
+        ctx.save();
+        const grad = ctx.createRadialGradient(width/2, height/2, height/3, width/2, height/2, height);
+        grad.addColorStop(0, 'rgba(255,0,0,0)');
+        grad.addColorStop(1, `rgba(255,0,0,${Math.abs(Math.sin(Date.now() * 0.01)) * 0.5})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+        
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 24px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillText('WARNING: HIGH RADIATION', width/2, 100);
+        ctx.restore();
+    }
+
     // 7. Indicators
     // We check if the SCREEN position of target is off-screen
     const drawIndicator = (targetPos: Vector2, color: string, label: string) => {
@@ -830,7 +888,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         visibleWorldH * mapScale
     );
 
-  }, [dockPrompt, dimensions, playerState, stationsRef]);
+  }, [dockPrompt, dimensions, playerState, stationsRef, radiationWarning]);
 
   // Loop
   const loop = useCallback(() => {
