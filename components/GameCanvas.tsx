@@ -187,7 +187,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     zoomRef.current = 1.0;
     setRadiationWarning(false);
 
-    setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 10 })); 
+    // Goal: Clean the sector. Multiplier increased to 150 (approx 60% of total mass score)
+    setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 150 })); 
   }, [stats.level, setStats, playerState]);
 
   // Initial Setup
@@ -339,7 +340,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         screenShakeRef.current += ast.mass > 30 ? 15 : 5;
         if (screenShakeRef.current > 40) screenShakeRef.current = 40;
 
-        for(let p=0; p < PARTICLES_PER_ASTEROID_BASE; p++) {
+        // Dynamic loot based on mass
+        const particleCount = Math.floor(PARTICLES_PER_ASTEROID_BASE + (ast.mass * 0.5));
+
+        for(let p=0; p < particleCount; p++) {
           particlesRef.current.push({
             id: `p_${Date.now()}_${p}`,
             pos: { ...ast.pos },

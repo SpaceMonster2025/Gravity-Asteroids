@@ -19,7 +19,7 @@ export const RADIATION_RADIUS = 600; // Zone where hull takes damage
 export const RADIATION_DAMAGE_MAX = 0.2; // Max damage per frame at event horizon
 
 // Gameplay Constants
-export const PARTICLES_PER_ASTEROID_BASE = 5;
+export const PARTICLES_PER_ASTEROID_BASE = 12; // Increased loot
 export const FUEL_CONSUMPTION = 0.05;
 export const PARTICLE_BASE_PRICE = 10;
 export const FUEL_COST = 1; // Per unit
@@ -28,7 +28,7 @@ export const REPULSION_START_RADIUS = 2500; // Particles push away to this dist 
 export const REPULSION_MIN_RADIUS = 700; // Minimum repulsion distance at high mass
 
 // Economy
-export const STATION_CONSUMPTION_RATE = 0.03; // Particles consumed per frame
+export const STATION_CONSUMPTION_RATE = 0.005; // Reduced consumption so players can meet demand
 export const HIGH_DEMAND_THRESHOLD = 0.25; // Below 25% inventory = High Demand
 export const LOW_DEMAND_THRESHOLD = 0.75; // Above 75% inventory = Low Demand
 export const HIGH_DEMAND_MULTIPLIER = 1.5;
