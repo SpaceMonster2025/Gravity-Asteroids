@@ -1,0 +1,5 @@
+{
+  "name": "Singularity Shepherd",
+  "description": "A top-down 2D sci-fi physics game where you pilot a ship equipped with a gravity singularity to herd asteroids into a black hole for resource extraction. Uses Gemini 2.5 Flash for dynamic mission narratives.",
+  "requestFramePermissions": []
+}
