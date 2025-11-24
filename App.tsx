@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import GameCanvas from './components/GameCanvas';
 import HUD from './components/HUD';
@@ -16,7 +17,10 @@ const App: React.FC = () => {
     score: 0,
     level: 1,
     collected: 0,
-    particlesNeeded: 0
+    particlesNeeded: 0,
+    currentAsteroids: 0,
+    initialAsteroids: 0,
+    sectorsCleared: 0
   });
   
   // Used to force a hard reset of the GameCanvas component
@@ -72,7 +76,15 @@ const App: React.FC = () => {
 
   const handleStartGame = () => {
     initAudio(); // Initialize audio context on user interaction
-    setStats({ score: 0, level: 1, collected: 0, particlesNeeded: 0 });
+    setStats({ 
+      score: 0, 
+      level: 1, 
+      collected: 0, 
+      particlesNeeded: 0,
+      currentAsteroids: 0,
+      initialAsteroids: 0,
+      sectorsCleared: 0
+    });
     setUpgrades(INITIAL_UPGRADES);
     setLogs([]);
     
@@ -99,6 +111,22 @@ const App: React.FC = () => {
     playerRef.current.vel = { x: 0, y: 0 };
     playerRef.current.singularityActive = false;
     handleStartGame();
+  };
+
+  const handleNextSector = () => {
+    setGameState(GameState.PLAYING);
+    setStats(prev => ({
+        ...prev,
+        level: prev.level + 1,
+        score: 0, // Reset black hole mass for new sector
+        collected: 0, // Reset collected for new sector stats
+        sectorsCleared: prev.sectorsCleared + 1
+    }));
+    
+    // Keep upgrades, hull, credits. Reset position/velocity in initLevel of Canvas
+    
+    setGameId(prev => prev + 1); // Force Canvas Remount to generate new world
+    handleGameEvent('start');
   };
 
   const handleDock = (station: Station) => {
@@ -180,6 +208,7 @@ const App: React.FC = () => {
         player={playerRef.current}
         onRestart={handleRestart}
         onStart={handleStartGame}
+        onNextSector={handleNextSector}
       />
 
       {gameState === GameState.DOCKED && dockedStation && (

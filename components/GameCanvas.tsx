@@ -190,7 +190,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     setRadiationWarning(false);
 
     // Goal: Clean the sector. Multiplier increased to 150 (approx 60% of total mass score)
-    setStats(prev => ({ ...prev, collected: 0, particlesNeeded: count * 150 })); 
+    // Update stats with new counts
+    setStats(prev => ({ 
+        ...prev, 
+        collected: 0, // Reset collected for this sector
+        particlesNeeded: count * 150,
+        initialAsteroids: count,
+        currentAsteroids: count
+    })); 
   }, [stats.level, setStats, playerState]);
 
   // Initial Setup
@@ -333,6 +340,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     setDockPrompt(nearbyStation ? `PRESS 'F' TO DOCK AT ${nearbyStation.name}` : null);
 
     // --- Asteroids ---
+    let destroyedAsteroid = false;
     for (let i = asteroidsRef.current.length - 1; i >= 0; i--) {
       const ast = asteroidsRef.current[i];
       const distBH = getDistance(ast.pos, bh);
@@ -359,7 +367,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
           });
         }
         
-        setStats(prev => ({ ...prev, score: prev.score + Math.floor(ast.mass * 10) }));
+        setStats(prev => ({ 
+            ...prev, 
+            score: prev.score + Math.floor(ast.mass * 10),
+            currentAsteroids: prev.currentAsteroids - 1 
+        }));
         asteroidsRef.current.splice(i, 1);
         continue;
       }

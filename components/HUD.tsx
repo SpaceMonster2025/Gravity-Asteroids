@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { GameStats, NarrativeLog, GameState, Player } from '../types';
-import { Radar, Zap, Shield, Box, CreditCard } from 'lucide-react';
+import { Radar, Zap, Shield, Box, CreditCard, Crosshair } from 'lucide-react';
 
 interface HUDProps {
   stats: GameStats;
@@ -9,11 +10,23 @@ interface HUDProps {
   player: Player;
   onRestart: () => void;
   onStart: () => void;
+  onNextSector?: () => void;
 }
 
 const HUD: React.FC<HUDProps> = ({ 
-  stats, logs, gameState, player, onRestart, onStart 
+  stats, logs, gameState, player, onRestart, onStart, onNextSector 
 }) => {
+
+  const progress = Math.min(100, (stats.score / stats.particlesNeeded) * 100);
+  const asteroidsRemaining = stats.currentAsteroids;
+  const sectorCleaned = stats.initialAsteroids > 0 
+    ? Math.floor(((stats.initialAsteroids - stats.currentAsteroids) / stats.initialAsteroids) * 100)
+    : 0;
+  
+  // Asteroid Density (Inverse of cleaned, but visualized as % of initial load remaining)
+  const density = stats.initialAsteroids > 0 
+    ? Math.floor((stats.currentAsteroids / stats.initialAsteroids) * 100)
+    : 0;
 
   if (gameState === GameState.MENU) {
     return (
@@ -46,6 +59,7 @@ const HUD: React.FC<HUDProps> = ({
           <div className="flex items-center gap-2 mb-3 text-cyan-400 border-b border-slate-700 pb-2">
             <Radar size={20} />
             <span className="font-orbitron font-bold">SECTOR {stats.level}</span>
+            <span className="text-xs text-slate-500 ml-auto">CLR: {stats.sectorsCleared}</span>
           </div>
           <div className="space-y-3">
             <div>
@@ -53,11 +67,14 @@ const HUD: React.FC<HUDProps> = ({
                     <span>BLACK HOLE MASS</span>
                     <span className="font-mono">{stats.score.toLocaleString()} / {stats.particlesNeeded.toLocaleString()}</span>
                 </div>
-                <div className="h-1 bg-slate-800 w-full">
+                <div className="h-1 bg-slate-800 w-full relative">
                     <div 
                         className="h-full bg-amber-500 transition-all duration-500" 
-                        style={{ width: `${Math.min(100, (stats.score / stats.particlesNeeded) * 100)}%` }}
+                        style={{ width: `${progress}%` }}
                     />
+                    {progress >= 100 && (
+                        <div className="absolute top-0 right-0 -mt-1 w-2 h-2 bg-white rounded-full animate-ping"></div>
+                    )}
                 </div>
             </div>
             
@@ -66,6 +83,27 @@ const HUD: React.FC<HUDProps> = ({
                 <span className="font-mono text-xl">{player.credits.toLocaleString()} CR</span>
             </div>
           </div>
+        </div>
+        
+        {/* Sector Analysis */}
+        <div className="bg-black/60 border-t-4 border-purple-500 p-4 backdrop-blur w-72 mx-4">
+             <div className="flex items-center gap-2 mb-2 text-purple-400 border-b border-slate-700 pb-1">
+                <Crosshair size={18} />
+                <span className="font-orbitron font-bold text-sm">SECTOR ANALYSIS</span>
+            </div>
+            <div className="grid grid-cols-2 gap-y-2 text-xs font-mono">
+                <div className="text-slate-400">TARGETS REMAINING</div>
+                <div className="text-right text-white">{asteroidsRemaining}</div>
+
+                <div className="text-slate-400">PARTICLES COLL.</div>
+                <div className="text-right text-cyan-300">{stats.collected}</div>
+
+                <div className="text-slate-400">ASTEROID DENSITY</div>
+                <div className="text-right text-amber-300">{density}%</div>
+
+                <div className="text-slate-400">SECTOR CLEANED</div>
+                <div className="text-right text-emerald-400">{sectorCleaned}%</div>
+            </div>
         </div>
 
         {/* Narrative Log */}
@@ -83,6 +121,26 @@ const HUD: React.FC<HUDProps> = ({
           ))}
         </div>
       </div>
+      
+      {/* Warp Jump Button - Appears when quota met */}
+      {stats.score >= stats.particlesNeeded && gameState === GameState.PLAYING && (
+         <div className="absolute top-32 left-1/2 -translate-x-1/2 pointer-events-auto">
+            <button 
+                onClick={onNextSector}
+                className="group relative px-12 py-4 bg-transparent overflow-hidden clip-path-polygon"
+                style={{ clipPath: 'polygon(10% 0, 100% 0, 90% 100%, 0% 100%)' }}
+            >
+                <div className="absolute inset-0 w-full h-full bg-cyan-600/20 group-hover:bg-cyan-600/40 transition-colors border-2 border-cyan-400"></div>
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-cyan-400 animate-pulse"></div>
+                <span className="relative font-orbitron text-2xl text-cyan-100 tracking-[0.2em] font-bold group-hover:text-white group-hover:drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]">
+                    INITIATE WARP JUMP
+                </span>
+            </button>
+            <div className="text-center text-cyan-300 text-xs font-mono mt-2 animate-pulse">
+                SECTOR QUOTA MET - HYPERDRIVE READY
+            </div>
+         </div>
+      )}
 
       {/* Center Messages (Game Over Only) */}
       {(gameState === GameState.GAME_OVER) && (

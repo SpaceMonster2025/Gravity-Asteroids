@@ -1,3 +1,4 @@
+
 export interface Vector2 {
   x: number;
   y: number;
@@ -49,8 +50,11 @@ export interface Station extends Entity {
 export interface GameStats {
   score: number; // Represents Mass delivered to BH
   level: number;
-  collected: number; // Total gathered lifetime
+  collected: number; // Total gathered in current sector
   particlesNeeded: number; // Quota for BH
+  currentAsteroids: number;
+  initialAsteroids: number;
+  sectorsCleared: number;
 }
 
 export enum GameState {
