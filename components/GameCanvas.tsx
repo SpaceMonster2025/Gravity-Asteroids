@@ -131,12 +131,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const rangeUpgrade = upgrades.find(u => u.id === 'range');
     const hullUpgrade = upgrades.find(u => u.id === 'hull');
     const cargoUpgrade = upgrades.find(u => u.id === 'cargo');
+    const vacuumUpgrade = upgrades.find(u => u.id === 'vacuum');
 
     if (playerState.current) {
       playerState.current.singularityStrength = 1 + ((strengthUpgrade?.level || 1) - 1) * 0.5;
       playerState.current.singularityRadius = 200 + ((rangeUpgrade?.level || 1) - 1) * 50;
       playerState.current.maxIntegrity = 100 + ((hullUpgrade?.level || 1) - 1) * 25;
       playerState.current.maxCargo = 50 + ((cargoUpgrade?.level || 1) - 1) * 50;
+      playerState.current.vacuumRange = 100 + ((vacuumUpgrade?.level || 1) - 1) * 50;
     }
   }, [upgrades, playerState]);
 
@@ -418,6 +420,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       const p = particlesRef.current[i];
       const distBH = getDistance(p.pos, bh);
       
+      // Black Hole Repulsion
       if (distBH < currentRepulsionRadius) {
           const dir = normalize({ x: p.pos.x - bh.x, y: p.pos.y - bh.y });
           // Force strength inverse to distance relative to repulsion radius
@@ -426,13 +429,27 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
           p.vel.y += dir.y * repulsionStrength;
       }
 
+      // Vacuum / Scoop Logic
+      const distPlayer = getDistance(p.pos, player.pos);
+      if (distPlayer < player.vacuumRange && player.cargo < player.maxCargo) {
+          const dir = normalize({ x: player.pos.x - p.pos.x, y: player.pos.y - p.pos.y });
+          // Stronger pull as it gets closer
+          const pullStrength = 0.5 + (1 - distPlayer / player.vacuumRange) * 2.0; 
+          p.vel.x += dir.x * pullStrength;
+          p.vel.y += dir.y * pullStrength;
+          
+          // Dampen velocity to prevent orbiting
+          p.vel.x *= 0.85;
+          p.vel.y *= 0.85;
+      }
+
       p.life--;
       p.pos.x += p.vel.x;
       p.pos.y += p.vel.y;
       p.vel.x *= 0.98;
       p.vel.y *= 0.98;
 
-      if (getDistance(p.pos, player.pos) < player.radius + 30) {
+      if (distPlayer < player.radius + 15) { // Slightly increased pickup radius
         if (player.cargo < player.maxCargo) {
             particlesRef.current.splice(i, 1);
             player.cargo += 1;

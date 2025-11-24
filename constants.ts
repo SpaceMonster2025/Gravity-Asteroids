@@ -116,5 +116,13 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     cost: 200,
     level: 1,
     maxLevel: 5
+  },
+  {
+    id: 'vacuum',
+    name: 'Matter Scoop',
+    description: 'Generates a suction field to auto-collect particles.',
+    cost: 180,
+    level: 1,
+    maxLevel: 5
   }
 ];

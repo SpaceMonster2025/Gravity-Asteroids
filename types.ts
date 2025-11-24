@@ -20,6 +20,7 @@ export interface Player extends Entity {
   singularityActive: boolean;
   singularityRadius: number;
   singularityStrength: number;
+  vacuumRange: number; // Range for auto-collecting particles
   cargo: number;
   maxCargo: number;
   credits: number;

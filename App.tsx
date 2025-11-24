@@ -44,6 +44,7 @@ const App: React.FC = () => {
     singularityActive: false,
     singularityRadius: 200,
     singularityStrength: 1,
+    vacuumRange: 100, // Initial vacuum range
     cargo: 0,
     maxCargo: 50,
     credits: 0
