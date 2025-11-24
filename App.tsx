@@ -3,8 +3,12 @@ import GameCanvas from './components/GameCanvas';
 import HUD from './components/HUD';
 import StationMenu from './components/StationMenu';
 import { GameState, GameStats, NarrativeLog, Upgrade, Player, Station } from './types';
-import { INITIAL_UPGRADES, WORLD_WIDTH, WORLD_HEIGHT, PARTICLE_BASE_PRICE, REPAIR_COST } from './constants';
+import { 
+  INITIAL_UPGRADES, WORLD_WIDTH, WORLD_HEIGHT, PARTICLE_BASE_PRICE, REPAIR_COST, 
+  STATIONS, HIGH_DEMAND_THRESHOLD, LOW_DEMAND_THRESHOLD, HIGH_DEMAND_MULTIPLIER, LOW_DEMAND_MULTIPLIER 
+} from './constants';
 import { generateMissionBriefing } from './services/aiService.ts';
+import { initAudio } from './services/audioService';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
@@ -15,9 +19,15 @@ const App: React.FC = () => {
     particlesNeeded: 0
   });
   
+  // Used to force a hard reset of the GameCanvas component
+  const [gameId, setGameId] = useState(0);
+  
   const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
   const [logs, setLogs] = useState<NarrativeLog[]>([]);
   const [dockedStation, setDockedStation] = useState<Station | null>(null);
+
+  // Stations State (Lifted from GameCanvas to be accessible by Menu)
+  const stationsRef = useRef<Station[]>([]);
 
   // Mutable player state to avoid re-renders on every physics frame, but accessible to UI
   const playerRef = useRef<Player>({
@@ -60,10 +70,23 @@ const App: React.FC = () => {
   }, [stats.level, stats.score]);
 
   const handleStartGame = () => {
+    initAudio(); // Initialize audio context on user interaction
     setStats({ score: 0, level: 1, collected: 0, particlesNeeded: 0 });
     setUpgrades(INITIAL_UPGRADES);
     setLogs([]);
+    
+    // Initialize Stations with random start inventory
+    stationsRef.current = STATIONS.map((s, i) => ({
+      ...s,
+      id: `station_${i}`,
+      vel: { x: 0, y: 0 },
+      angle: i * (Math.PI / 3), // Varied initial angles
+      mass: 10000, // Immovable
+      inventory: Math.floor(Math.random() * s.maxInventory * 0.5) // Start at 0-50% capacity
+    }));
+
     setGameState(GameState.PLAYING);
+    setGameId(prev => prev + 1); // Force Canvas Remount
     handleGameEvent('start');
   };
 
@@ -72,6 +95,8 @@ const App: React.FC = () => {
     playerRef.current.cargo = 0;
     playerRef.current.credits = 0;
     playerRef.current.integrity = 100;
+    playerRef.current.vel = { x: 0, y: 0 };
+    playerRef.current.singularityActive = false;
     handleStartGame();
   };
 
@@ -88,9 +113,22 @@ const App: React.FC = () => {
   // Station Actions
   const handleSellCargo = () => {
     if (!dockedStation) return;
-    const value = Math.floor(playerRef.current.cargo * PARTICLE_BASE_PRICE * dockedStation.priceMultiplier);
+    
+    // Calculate Price Dynamic
+    const saturation = dockedStation.inventory / dockedStation.maxInventory;
+    let demandMultiplier = 1.0;
+    
+    if (saturation < HIGH_DEMAND_THRESHOLD) demandMultiplier = HIGH_DEMAND_MULTIPLIER;
+    else if (saturation > LOW_DEMAND_THRESHOLD) demandMultiplier = LOW_DEMAND_MULTIPLIER;
+    
+    const unitPrice = Math.floor(PARTICLE_BASE_PRICE * dockedStation.priceMultiplier * demandMultiplier);
+    const value = playerRef.current.cargo * unitPrice;
+
+    // Transaction
     playerRef.current.credits += value;
+    dockedStation.inventory = Math.min(dockedStation.maxInventory, dockedStation.inventory + playerRef.current.cargo);
     playerRef.current.cargo = 0;
+    
     setTick(t => t + 1); // Force UI update
   };
 
@@ -122,12 +160,14 @@ const App: React.FC = () => {
       <div className="scanlines"></div>
       
       <GameCanvas 
+        key={gameId}
         gameState={gameState} 
         setGameState={setGameState}
         stats={stats}
         setStats={setStats}
         upgrades={upgrades}
         playerState={playerRef}
+        stationsRef={stationsRef}
         onGameEvent={handleGameEvent}
         onDock={handleDock}
       />

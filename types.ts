@@ -41,6 +41,8 @@ export interface Station extends Entity {
   name: string;
   color: string;
   priceMultiplier: number; // 1.0 is base price
+  inventory: number;
+  maxInventory: number;
 }
 
 export interface GameStats {

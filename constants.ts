@@ -22,6 +22,13 @@ export const PARTICLE_BASE_PRICE = 10;
 export const FUEL_COST = 1; // Per unit
 export const REPAIR_COST = 5; // Per unit
 
+// Economy
+export const STATION_CONSUMPTION_RATE = 0.03; // Particles consumed per frame
+export const HIGH_DEMAND_THRESHOLD = 0.25; // Below 25% inventory = High Demand
+export const LOW_DEMAND_THRESHOLD = 0.75; // Above 75% inventory = Low Demand
+export const HIGH_DEMAND_MULTIPLIER = 1.5;
+export const LOW_DEMAND_MULTIPLIER = 0.6;
+
 // Colors
 export const COLORS = {
   SHIP: '#06b6d4', // Cyan 500
@@ -37,13 +44,14 @@ export const COLORS = {
   STATION_GLOW: '#34d399',
 };
 
-export const STATIONS: Omit<Station, 'id' | 'vel' | 'angle' | 'mass'>[] = [
+export const STATIONS: Omit<Station, 'id' | 'vel' | 'angle' | 'mass' | 'inventory'>[] = [
   {
     name: 'Alpha Outpost',
     pos: { x: 1500, y: 1500 },
     radius: 100,
     color: '#10b981',
-    priceMultiplier: 1.0, // Safer, lower price
+    priceMultiplier: 1.0, 
+    maxInventory: 500,
   },
   {
     name: 'Beta Refinery',
@@ -51,6 +59,7 @@ export const STATIONS: Omit<Station, 'id' | 'vel' | 'angle' | 'mass'>[] = [
     radius: 100,
     color: '#3b82f6', // Blue
     priceMultiplier: 1.2,
+    maxInventory: 800,
   },
   {
     name: 'Void Bazaar',
@@ -58,6 +67,7 @@ export const STATIONS: Omit<Station, 'id' | 'vel' | 'angle' | 'mass'>[] = [
     radius: 120,
     color: '#8b5cf6', // Violet
     priceMultiplier: 1.5, // High risk/reward
+    maxInventory: 400,
   }
 ];
 

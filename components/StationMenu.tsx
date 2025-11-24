@@ -1,6 +1,6 @@
 import React from 'react';
 import { Player, Station, Upgrade } from '../types';
-import { PARTICLE_BASE_PRICE, REPAIR_COST, FUEL_COST } from '../constants';
+import { PARTICLE_BASE_PRICE, REPAIR_COST, FUEL_COST, HIGH_DEMAND_THRESHOLD, LOW_DEMAND_THRESHOLD, HIGH_DEMAND_MULTIPLIER, LOW_DEMAND_MULTIPLIER } from '../constants';
 
 interface StationMenuProps {
   station: Station;
@@ -15,7 +15,23 @@ interface StationMenuProps {
 const StationMenu: React.FC<StationMenuProps> = ({ 
   station, player, upgrades, onUndock, onSell, onRepair, onUpgrade 
 }) => {
-  const sellValue = Math.floor(player.cargo * PARTICLE_BASE_PRICE * station.priceMultiplier);
+  const saturation = station.inventory / station.maxInventory;
+  let demandMultiplier = 1.0;
+  let demandLabel = 'NORMAL';
+  let demandColor = 'text-emerald-400';
+
+  if (saturation < HIGH_DEMAND_THRESHOLD) {
+      demandMultiplier = HIGH_DEMAND_MULTIPLIER;
+      demandLabel = 'HIGH';
+      demandColor = 'text-amber-400';
+  } else if (saturation > LOW_DEMAND_THRESHOLD) {
+      demandMultiplier = LOW_DEMAND_MULTIPLIER;
+      demandLabel = 'LOW';
+      demandColor = 'text-red-400';
+  }
+
+  const unitPrice = Math.floor(PARTICLE_BASE_PRICE * station.priceMultiplier * demandMultiplier);
+  const sellValue = player.cargo * unitPrice;
   const repairCost = Math.floor((player.maxIntegrity - player.integrity) * REPAIR_COST);
   const canRepair = player.credits >= repairCost && player.integrity < player.maxIntegrity;
 
@@ -43,17 +59,26 @@ const StationMenu: React.FC<StationMenuProps> = ({
                 {/* Cargo Market */}
                 <div className="bg-black/40 p-6 border border-emerald-800">
                     <h2 className="text-xl font-orbitron text-slate-200 mb-4">RESOURCE EXCHANGE</h2>
+                    
+                    {/* Market Status */}
+                    <div className="flex justify-between items-center mb-4 bg-slate-900 p-2 border border-slate-700">
+                        <div className="text-xs text-slate-400">DEMAND LEVEL</div>
+                        <div className={`font-bold font-mono ${demandColor}`}>{demandLabel}</div>
+                    </div>
+
                     <div className="flex justify-between items-end mb-4">
                         <div className="text-slate-400 text-sm">CARGO HOLD</div>
                         <div className="font-mono text-emerald-400">{player.cargo} / {player.maxCargo}</div>
                     </div>
+                    
                     <div className="flex justify-between items-center bg-slate-900 p-4 mb-4 border border-slate-700">
                         <div className="text-slate-300">Exotic Matter</div>
                         <div className="text-right">
                             <div className="text-xs text-slate-500">MARKET RATE</div>
-                            <div className="text-emerald-400 font-mono">{Math.floor(PARTICLE_BASE_PRICE * station.priceMultiplier)} CR/u</div>
+                            <div className="text-emerald-400 font-mono">{unitPrice} CR/u</div>
                         </div>
                     </div>
+                    
                     <button 
                         onClick={onSell}
                         disabled={player.cargo === 0}
@@ -61,6 +86,10 @@ const StationMenu: React.FC<StationMenuProps> = ({
                     >
                         SELL ALL ({sellValue} CR)
                     </button>
+                    
+                    <div className="mt-2 text-xs text-slate-500 text-center">
+                        Station Inventory: {Math.floor(station.inventory)} / {station.maxInventory}
+                    </div>
                 </div>
 
                 {/* Maintenance */}
