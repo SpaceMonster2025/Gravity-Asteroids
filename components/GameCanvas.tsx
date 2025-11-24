@@ -8,7 +8,7 @@ import {
   PARTICLES_PER_ASTEROID_BASE, COLORS, WORLD_WIDTH, WORLD_HEIGHT, GRID_SIZE, 
   STATION_CONSUMPTION_RATE, HIGH_DEMAND_THRESHOLD
 } from '../constants';
-import { playThrustSound, playGravitySound, playExplosion } from '../services/audioService';
+import { playThrustSound, playGravitySound, playExplosion, playCollectSound } from '../services/audioService';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -401,6 +401,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             particlesRef.current.splice(i, 1);
             player.cargo += 1;
             addedCargo++;
+            playCollectSound();
         }
       } else if (p.life <= 0) {
         particlesRef.current.splice(i, 1);

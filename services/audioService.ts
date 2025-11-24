@@ -125,3 +125,25 @@ export const playExplosion = (size: 'small' | 'large') => {
   osc.start();
   osc.stop(audioCtx.currentTime + 0.6);
 };
+
+export const playCollectSound = () => {
+  if (!audioCtx) return;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = 'sine';
+  // Random pitch for variety (1200Hz - 1600Hz)
+  const freq = 1200 + (Math.random() * 400); 
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(freq + 400, audioCtx.currentTime + 0.1);
+
+  gain.gain.setValueAtTime(0.05, audioCtx.currentTime); // Lower volume to prevent clipping
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.15);
+};
