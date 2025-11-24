@@ -54,7 +54,7 @@ const HUD: React.FC<HUDProps> = ({
       
       {/* Top Bar */}
       <div className="flex justify-between items-start">
-        {/* Mission Stats */}
+        {/* Mission Stats (Left) */}
         <div className="bg-black/60 border-l-4 border-cyan-500 p-4 backdrop-blur w-72">
           <div className="flex items-center gap-2 mb-3 text-cyan-400 border-b border-slate-700 pb-2">
             <Radar size={20} />
@@ -85,8 +85,8 @@ const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         
-        {/* Sector Analysis */}
-        <div className="bg-black/60 border-t-4 border-purple-500 p-4 backdrop-blur w-72 mx-4">
+        {/* Sector Analysis (Right) */}
+        <div className="bg-black/60 border-t-4 border-purple-500 p-4 backdrop-blur w-72">
              <div className="flex items-center gap-2 mb-2 text-purple-400 border-b border-slate-700 pb-1">
                 <Crosshair size={18} />
                 <span className="font-orbitron font-bold text-sm">SECTOR ANALYSIS</span>
@@ -104,21 +104,6 @@ const HUD: React.FC<HUDProps> = ({
                 <div className="text-slate-400">SECTOR CLEANED</div>
                 <div className="text-right text-emerald-400">{sectorCleaned}%</div>
             </div>
-        </div>
-
-        {/* Narrative Log */}
-        <div className="bg-black/60 border-r-4 border-amber-500 p-4 backdrop-blur w-96 max-h-48 overflow-hidden flex flex-col-reverse">
-          {logs.slice(0, 3).map((log, i) => (
-            <div key={i} className={`mb-3 ${i === 0 ? 'opacity-100' : 'opacity-60 text-sm'}`}>
-              <div className="flex justify-between text-xs text-amber-600 mb-1 font-mono uppercase">
-                <span>// {log.sender}</span>
-                <span>{log.timestamp}</span>
-              </div>
-              <div className="text-amber-100 font-mono leading-tight">
-                "{log.message}"
-              </div>
-            </div>
-          ))}
         </div>
       </div>
       
