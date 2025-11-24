@@ -111,7 +111,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       ...s,
       id: `station_${i}`,
       vel: { x: 0, y: 0 },
-      angle: 0,
+      angle: i * (Math.PI / 3), // Varied initial angles
       mass: 10000, // Immovable
     }));
 
@@ -197,9 +197,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     // 2. Physics Entities
     const bh = blackHolePos.current;
 
-    // --- Station Docking Logic ---
+    // --- Station Logic ---
     let nearbyStation = null;
-    for(const station of stationsRef.current) {
+    stationsRef.current.forEach(station => {
+        // Rotate stations slowly
+        station.angle += 0.002;
+
         if (getDistance(player.pos, station.pos) < station.radius + 100) {
             nearbyStation = station;
             if (keysPressed.current['KeyF']) {
@@ -207,7 +210,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 keysPressed.current['KeyF'] = false; // Prevent spam
             }
         }
-    }
+    });
     setDockPrompt(nearbyStation ? `PRESS 'F' TO DOCK AT ${nearbyStation.name}` : null);
 
     // --- Asteroids ---
@@ -253,13 +256,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         const distPlayer = getDistance(ast.pos, player.pos);
         if (distPlayer < player.singularityRadius) {
           const dirPlayer = normalize({ x: player.pos.x - ast.pos.x, y: player.pos.y - ast.pos.y });
-          const forcePlayer = (GRAVITY_CONSTANT * player.singularityStrength * player.mass * ast.mass) / (distPlayer * distPlayer + 100);
+          
+          // Use a "Virtual Mass" for the singularity so it stays strong even if ship is light
+          const singularityVirtualMass = 40; 
+          const forcePlayer = (GRAVITY_CONSTANT * player.singularityStrength * singularityVirtualMass * ast.mass) / (distPlayer * distPlayer + 100);
+          
           ast.vel.x += dirPlayer.x * forcePlayer;
           ast.vel.y += dirPlayer.y * forcePlayer;
           
-          // Drag
-          player.vel.x -= dirPlayer.x * (forcePlayer / player.mass) * 0.2;
-          player.vel.y -= dirPlayer.y * (forcePlayer / player.mass) * 0.2;
+          // Drag (Reaction Force)
+          // Since player mass is now very low, we reduce the reaction coefficient significantly (0.2 -> 0.05)
+          // to prevent the ship from being violently yanked into the asteroid.
+          player.vel.x -= dirPlayer.x * (forcePlayer / player.mass) * 0.05;
+          player.vel.y -= dirPlayer.y * (forcePlayer / player.mass) * 0.05;
         }
       }
 
@@ -272,10 +281,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       const distCol = getDistance(ast.pos, player.pos);
       if (distCol < ast.radius + player.radius) {
         const angle = Math.atan2(player.pos.y - ast.pos.y, player.pos.x - ast.pos.x);
+        
+        // Player is knocked back
         player.vel.x += Math.cos(angle) * 3;
         player.vel.y += Math.sin(angle) * 3;
-        ast.vel.x -= Math.cos(angle) * 2;
-        ast.vel.y -= Math.sin(angle) * 2;
+        
+        // Asteroid is UNAFFECTED (Infinite mass relative to ship collision)
+        // ast.vel changes removed here to prevent "bumping"
+        
         player.integrity -= (ast.mass * 0.1);
         if (player.integrity <= 0) {
             setGameState(GameState.GAME_OVER);
@@ -398,31 +411,101 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 3. Draw Stations
+    // 3. Draw Stations (Enhanced Visuals)
     stationsRef.current.forEach(s => {
-       ctx.fillStyle = s.color;
-       ctx.shadowColor = s.color;
-       ctx.shadowBlur = 20;
-       ctx.beginPath();
-       ctx.arc(s.pos.x, s.pos.y, s.radius, 0, Math.PI * 2);
-       ctx.fill();
-       ctx.shadowBlur = 0;
+       // Culling
+       if (s.pos.x < cam.x - 250 || s.pos.x > cam.x + width + 250 || 
+           s.pos.y < cam.y - 250 || s.pos.y > cam.y + height + 250) return;
+
+       ctx.save();
+       ctx.translate(s.pos.x, s.pos.y);
        
-       // Station Structure Details
-       ctx.strokeStyle = '#fff';
-       ctx.lineWidth = 3;
+       // Draw Glow
+       ctx.shadowColor = s.color;
+       ctx.shadowBlur = 40;
+       
+       // Rotating Outer Arms (Counter-clockwise)
+       ctx.save();
+       ctx.rotate(s.angle); 
+       
+       // Arms Structure
+       ctx.strokeStyle = '#475569'; // Slate 600
+       ctx.lineWidth = 8;
+       for(let i=0; i<4; i++) {
+           ctx.beginPath();
+           ctx.moveTo(0, 0);
+           ctx.lineTo(s.radius + 40, 0);
+           ctx.stroke();
+           
+           // Panels/Blocks on arms
+           ctx.fillStyle = '#1e293b'; // Slate 800
+           ctx.fillRect(s.radius, -12, 35, 24);
+           ctx.strokeStyle = '#94a3b8'; // Slate 400
+           ctx.lineWidth = 1;
+           ctx.strokeRect(s.radius, -12, 35, 24);
+           
+           ctx.rotate(Math.PI / 2);
+       }
+       ctx.restore();
+
+       // Rotating Inner Ring (Clockwise)
+       ctx.save();
+       ctx.rotate(-s.angle * 1.5);
+       ctx.strokeStyle = s.color;
+       ctx.lineWidth = 4;
+       ctx.setLineDash([20, 15]); // Dashed ring
        ctx.beginPath();
-       ctx.moveTo(s.pos.x - 40, s.pos.y);
-       ctx.lineTo(s.pos.x + 40, s.pos.y);
-       ctx.moveTo(s.pos.x, s.pos.y - 40);
-       ctx.lineTo(s.pos.x, s.pos.y + 40);
+       ctx.arc(0, 0, s.radius + 15, 0, Math.PI * 2);
        ctx.stroke();
+       ctx.setLineDash([]);
+       ctx.restore();
+
+       // Central Hub Body
+       ctx.fillStyle = '#0f172a'; // Slate 900
+       ctx.beginPath();
+       ctx.arc(0, 0, s.radius, 0, Math.PI * 2);
+       ctx.fill();
+       
+       // Colored Core
+       ctx.fillStyle = s.color;
+       ctx.globalAlpha = 0.8;
+       ctx.beginPath();
+       ctx.arc(0, 0, s.radius * 0.6, 0, Math.PI * 2);
+       ctx.fill();
+       ctx.globalAlpha = 1.0;
+       
+       ctx.shadowBlur = 0; // Reset shadow for details
+
+       // 4. Blinking Lights on Arms
+       ctx.save();
+       ctx.rotate(s.angle); // Rotate with arms
+       const time = Date.now();
+       for(let i=0; i<4; i++) {
+           // Primary Beacon (Red)
+           const blink = Math.sin(time * 0.005 + i) > 0;
+           ctx.fillStyle = blink ? '#ef4444' : '#450a0a'; 
+           ctx.beginPath();
+           ctx.arc(s.radius + 45, 0, 4, 0, Math.PI * 2);
+           ctx.fill();
+           
+           // Secondary Lights (Yellow)
+           const blink2 = Math.cos(time * 0.008 + i) > 0.5;
+           ctx.fillStyle = blink2 ? '#facc15' : '#422006'; 
+           ctx.beginPath();
+           ctx.arc(s.radius + 20, 15, 2, 0, Math.PI * 2);
+           ctx.fill();
+           
+           ctx.rotate(Math.PI / 2);
+       }
+       ctx.restore();
 
        // Label
+       ctx.restore(); // Restore to world coords (pop station transform)
+       
        ctx.fillStyle = '#fff';
        ctx.font = '16px Rajdhani';
        ctx.textAlign = 'center';
-       ctx.fillText(s.name, s.pos.x, s.pos.y + s.radius + 30);
+       ctx.fillText(s.name, s.pos.x, s.pos.y + s.radius + 70);
     });
 
     // 4. Draw Asteroids (Culling check could be added here)

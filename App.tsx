@@ -4,7 +4,7 @@ import HUD from './components/HUD';
 import StationMenu from './components/StationMenu';
 import { GameState, GameStats, NarrativeLog, Upgrade, Player, Station } from './types';
 import { INITIAL_UPGRADES, WORLD_WIDTH, WORLD_HEIGHT, PARTICLE_BASE_PRICE, REPAIR_COST } from './constants';
-import { generateMissionBriefing } from './services/aiService';
+import { generateMissionBriefing } from './services/aiService.ts';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
@@ -26,7 +26,7 @@ const App: React.FC = () => {
     vel: { x: 0, y: 0 },
     angle: 0,
     radius: 15,
-    mass: 20,
+    mass: 2, // Significantly reduced mass (was 20)
     fuel: 100,
     maxFuel: 100,
     integrity: 100,
